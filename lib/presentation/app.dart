@@ -1,3 +1,5 @@
+import 'reports_dashboard.dart';
+import 'table_report.dart';
 import 'report_share.dart';
 import 'profile.dart';
 import 'palette.dart';
@@ -109,7 +111,11 @@ class _WorkspaceState extends State<Workspace> {
     Navigator.push<void>(
       context,
       MaterialPageRoute(
-        builder: (_) => ReportModules(repository: widget.reports, role: role!),
+        builder: (_) => ReportModules(
+          repository: widget.reports,
+          role: role!,
+          username: username,
+        ),
       ),
     );
   }
@@ -119,7 +125,20 @@ class _WorkspaceState extends State<Workspace> {
       context,
     ).push<Visit>(MaterialPageRoute(builder: (_) => const VisitForm()));
     if (!mounted || visit == null) return;
-    setState(() => widget.repository.add(visit));
+    setState(
+      () => widget.repository.add(
+        Visit(
+          visit.doctor,
+          visit.clinic,
+          visit.time,
+          notes: visit.notes,
+          completed: visit.completed,
+          escalated: visit.escalated,
+          employee: username,
+          date: DateTime.now(),
+        ),
+      ),
+    );
   }
 
   @override
@@ -137,6 +156,7 @@ class _WorkspaceState extends State<Workspace> {
         }),
       );
     }
+    final awaitingCheckIn = !manager && started == null;
     final displayed = tab == 1
         ? visits
         : tab == 2 || manager
@@ -146,6 +166,27 @@ class _WorkspaceState extends State<Workspace> {
       appBar: AppBar(
         title: const Brand(),
         actions: [
+          if (tab == 1)
+            IconButton(
+              tooltip: 'Daily plan table',
+              icon: const Icon(Icons.table_chart_outlined),
+              onPressed: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => TableReportPage(
+                    title: 'Daily plan',
+                    records: [
+                      for (final visit in displayed)
+                        {
+                          'Name': visit.doctor,
+                          'Time': visit.time,
+                          'Clinic': visit.clinic,
+                        },
+                    ],
+                  ),
+                ),
+              ),
+            ),
           if (tab == 1 || tab == 2)
             ReportShareButton(
               title: tab == 1 ? 'Daily plan' : 'Visit reports',
@@ -168,39 +209,46 @@ class _WorkspaceState extends State<Workspace> {
           ),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: tab,
-        onDestinationSelected: (value) {
-          if (value == 3) {
-            openModules();
-            return;
-          }
-          setState(() => tab = value);
-        },
-        destinations: [
-          const NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            label: 'Today',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.calendar_today_outlined),
-            label: 'Plan',
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.assignment_outlined),
-            label: 'Reports',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.grid_view_rounded),
-            label: 'More',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            label: 'Profile',
-          ),
-        ],
-      ),
-      body: tab == 4
+      bottomNavigationBar: awaitingCheckIn
+          ? null
+          : NavigationBar(
+              selectedIndex: tab,
+              onDestinationSelected: (value) {
+                if (value == 3) {
+                  openModules();
+                  return;
+                }
+                setState(() => tab = value);
+              },
+              destinations: [
+                const NavigationDestination(
+                  icon: Icon(Icons.home_outlined),
+                  label: 'Today',
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.calendar_today_outlined),
+                  label: 'Plan',
+                ),
+                NavigationDestination(
+                  icon: const Icon(Icons.assignment_outlined),
+                  label: 'Reports',
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.grid_view_rounded),
+                  label: 'More',
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.person_outline),
+                  label: 'Profile',
+                ),
+              ],
+            ),
+      body: tab == 2
+          ? ReportsDashboard(
+              repository: widget.reports,
+              visits: widget.repository,
+            )
+          : tab == 4
           ? ProfilePage(
               username: username,
               details: profileDetails[username],
@@ -241,6 +289,13 @@ class _WorkspaceState extends State<Workspace> {
                             ),
                             const SizedBox(height: 18),
                             Text(
+                              profileDetails[username]?.$1 ?? username,
+                              style: theme.titleMedium?.copyWith(
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
                               manager ? 'Team overview' : 'Your field day',
                               style: theme.headlineMedium?.copyWith(
                                 fontWeight: FontWeight.w800,
@@ -280,79 +335,86 @@ class _WorkspaceState extends State<Workspace> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          Chip(
-                            avatar: const Icon(
-                              Icons.event_available_outlined,
-                              size: 18,
-                            ),
-                            label: Text(
-                              '${visits.length - reports.length} planned',
-                            ),
-                          ),
-                          Chip(
-                            avatar: const Icon(Icons.task_alt, size: 18),
-                            label: Text('${reports.length} completed'),
-                          ),
-                          if (manager)
+                      if (!awaitingCheckIn) ...[
+                        const SizedBox(height: 16),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
                             Chip(
-                              avatar: const Icon(Icons.flag_outlined, size: 18),
+                              avatar: const Icon(
+                                Icons.event_available_outlined,
+                                size: 18,
+                              ),
                               label: Text(
-                                '${reports.where((visit) => visit.escalated).length} need follow-up',
+                                '${visits.length - reports.length} planned',
                               ),
                             ),
-                        ],
-                      ),
+                            Chip(
+                              avatar: const Icon(Icons.task_alt, size: 18),
+                              label: Text('${reports.length} completed'),
+                            ),
+                            if (manager)
+                              Chip(
+                                avatar: const Icon(
+                                  Icons.flag_outlined,
+                                  size: 18,
+                                ),
+                                label: Text(
+                                  '${reports.where((visit) => visit.escalated).length} need follow-up',
+                                ),
+                              ),
+                          ],
+                        ),
 
-                      if (!manager) ...[
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          onPressed: addVisit,
-                          icon: const Icon(Icons.add),
-                          label: const Text('Record a visit'),
-                        ),
+                        if (!manager) ...[
+                          const SizedBox(height: 16),
+                          FilledButton.icon(
+                            onPressed: addVisit,
+                            icon: const Icon(Icons.add),
+                            label: const Text('Record a visit'),
+                          ),
+                        ],
+                        const SizedBox(height: 24),
                       ],
-                      const SizedBox(height: 24),
                     ],
-                    Text(
-                      tab == 1
-                          ? 'Daily plan'
-                          : tab == 2 || manager
-                          ? 'Visit reports'
-                          : 'Upcoming visits',
-                      style: theme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (displayed.isEmpty)
-                      const Panel(
-                        child: ListTile(title: Text('No visit reports yet')),
-                      ),
-                    for (final visit in displayed)
-                      Panel(
-                        child: ListTile(
-                          leading: Icon(
-                            visit.escalated
-                                ? Icons.flag_outlined
-                                : Icons.local_hospital_outlined,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          title: Text(visit.doctor),
-                          subtitle: Text(
-                            [
-                              visit.clinic,
-                              visit.time,
-                              if (visit.notes.isNotEmpty) visit.notes,
-                              if (visit.escalated) 'Manager follow-up needed',
-                            ].join('\n'),
-                          ),
+                    if (!awaitingCheckIn) ...[
+                      Text(
+                        tab == 1
+                            ? 'Daily plan'
+                            : tab == 2 || manager
+                            ? 'Visit reports'
+                            : 'Upcoming visits',
+                        style: theme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
+                      const SizedBox(height: 12),
+                      if (displayed.isEmpty)
+                        const Panel(
+                          child: ListTile(title: Text('No visit reports yet')),
+                        ),
+                      for (final visit in displayed)
+                        Panel(
+                          child: ListTile(
+                            leading: Icon(
+                              visit.escalated
+                                  ? Icons.flag_outlined
+                                  : Icons.local_hospital_outlined,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            title: Text(visit.doctor),
+                            subtitle: Text(
+                              [
+                                visit.clinic,
+                                visit.time,
+                                if (visit.notes.isNotEmpty) visit.notes,
+                                if (visit.escalated) 'Manager follow-up needed',
+                              ].join('\n'),
+                            ),
+                          ),
+                        ),
+                    ],
                   ],
                 ),
               ),

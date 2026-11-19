@@ -8,8 +8,10 @@ class ReportShareButton extends StatefulWidget {
     super.key,
     required this.title,
     required this.records,
+    this.tabular = true,
   });
 
+  final bool tabular;
   final String title;
   final List<Map<String, String>> records;
 
@@ -19,6 +21,48 @@ class ReportShareButton extends StatefulWidget {
 
 class _ReportShareButtonState extends State<ReportShareButton> {
   bool sharing = false;
+
+  List<pdf.Widget> reportTables(List<Map<String, String>> records) {
+    final groups = <String, List<Map<String, String>>>{};
+    for (final record in records) {
+      (groups[record['Report type'] ?? widget.title] ??= []).add(record);
+    }
+    final widgets = <pdf.Widget>[];
+    for (final group in groups.entries) {
+      final columns = group.value
+          .expand((record) => record.keys)
+          .toSet()
+          .toList();
+      widgets.add(
+        pdf.Text(
+          group.key,
+          style: pdf.TextStyle(fontSize: 13, fontWeight: pdf.FontWeight.bold),
+        ),
+      );
+      for (var offset = 0; offset < columns.length; offset += 5) {
+        final batch = columns.skip(offset).take(5).toList();
+        widgets.add(pdf.SizedBox(height: 8));
+        widgets.add(
+          pdf.TableHelper.fromTextArray(
+            headers: ['#', ...batch],
+            data: [
+              for (var index = 0; index < group.value.length; index++)
+                [
+                  '${index + 1}',
+                  for (final column in batch) group.value[index][column] ?? '',
+                ],
+            ],
+            headerDecoration: pdf.BoxDecoration(
+              color: PdfColor.fromHex('#D8EFEB'),
+            ),
+            cellStyle: const pdf.TextStyle(fontSize: 9),
+          ),
+        );
+      }
+      widgets.add(pdf.SizedBox(height: 16));
+    }
+    return widgets;
+  }
 
   Future<void> share() async {
     final box = context.findRenderObject();
@@ -32,7 +76,9 @@ class _ReportShareButtonState extends State<ReportShareButton> {
       final document = pdf.Document(title: title, author: 'Aesthetic Daily');
       document.addPage(
         pdf.MultiPage(
-          pageFormat: PdfPageFormat.a4,
+          pageFormat: widget.tabular
+              ? PdfPageFormat.a4.landscape
+              : PdfPageFormat.a4,
           header: (_) => pdf.Padding(
             padding: const pdf.EdgeInsets.only(bottom: 18),
             child: pdf.Text(
@@ -48,20 +94,23 @@ class _ReportShareButtonState extends State<ReportShareButton> {
             child: pdf.Text('${context.pageNumber} / ${context.pagesCount}'),
           ),
           build: (_) => [
-            for (final record in records) ...[
-              for (final field in record.entries)
-                if (field.value.trim().isNotEmpty)
-                  for (final line in field.value.split(RegExp(r'\r?\n')))
-                    for (final chunk in RegExp(
-                      r'.{1,250}',
-                      unicode: true,
-                    ).allMatches(line))
-                      pdf.Padding(
-                        padding: const pdf.EdgeInsets.only(bottom: 5),
-                        child: pdf.Text('${field.key}: ${chunk.group(0)}'),
-                      ),
-              pdf.Divider(color: PdfColors.grey300),
-            ],
+            if (widget.tabular)
+              ...reportTables(records)
+            else
+              for (final record in records) ...[
+                for (final field in record.entries)
+                  if (field.value.trim().isNotEmpty)
+                    for (final line in field.value.split(RegExp(r'\r?\n')))
+                      for (final chunk in RegExp(
+                        r'.{1,250}',
+                        unicode: true,
+                      ).allMatches(line))
+                        pdf.Padding(
+                          padding: const pdf.EdgeInsets.only(bottom: 5),
+                          child: pdf.Text('${field.key}: ${chunk.group(0)}'),
+                        ),
+                pdf.Divider(color: PdfColors.grey300),
+              ],
           ],
         ),
       );

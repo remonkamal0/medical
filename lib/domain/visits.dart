@@ -6,10 +6,14 @@ class Visit {
     this.clinic,
     this.time, {
     this.notes = '',
+    this.employee,
+    this.date,
     this.escalated = false,
     this.completed = false,
   });
 
+  final String? employee;
+  final DateTime? date;
   final String doctor;
   final String clinic;
   final String time;

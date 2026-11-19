@@ -1,3 +1,5 @@
+import 'educational_activity_form.dart';
+import 'table_report.dart';
 import 'report_share.dart';
 import 'palette.dart';
 import 'package:flutter/material.dart';
@@ -79,10 +81,12 @@ class ReportModules extends StatelessWidget {
     super.key,
     required this.repository,
     required this.role,
+    this.username,
   });
 
   final ReportRepository repository;
   final Role role;
+  final String? username;
 
   static const groups = {
     'Field work': {
@@ -149,6 +153,7 @@ class ReportModules extends StatelessWidget {
                                 MaterialPageRoute(
                                   builder: (_) => SectionPage(
                                     section: item.key,
+                                    username: username,
                                     repository: repository,
                                     canEdit: item.key == 'Attendance'
                                         ? role == Role.manager
@@ -195,11 +200,13 @@ class SectionPage extends StatefulWidget {
     required this.section,
     required this.repository,
     required this.canEdit,
+    this.username,
   });
 
   final String section;
   final ReportRepository repository;
   final bool canEdit;
+  final String? username;
 
   @override
   State<SectionPage> createState() => _SectionPageState();
@@ -211,10 +218,23 @@ class _SectionPageState extends State<SectionPage> {
   Future<void> addEntry() async {
     final entry = await Navigator.push<ReportEntry>(
       context,
-      MaterialPageRoute(builder: (_) => EntryForm(section: widget.section)),
+      MaterialPageRoute(
+        builder: (_) => widget.section == 'Workshops and seminars'
+            ? const EducationalActivityForm()
+            : EntryForm(section: widget.section),
+      ),
     );
     if (!mounted || entry == null) return;
-    setState(() => widget.repository.add(widget.section, entry));
+    setState(
+      () => widget.repository.add(
+        widget.section,
+        ReportEntry({
+          ...entry.values,
+          'Employee': widget.username ?? 'Unassigned',
+          'Report date': DateTime.now().toIso8601String().split('T').first,
+        }),
+      ),
+    );
   }
 
   @override
@@ -231,6 +251,20 @@ class _SectionPageState extends State<SectionPage> {
       appBar: AppBar(
         title: Text(widget.section),
         actions: [
+          if (widget.section == 'Weekly plan' || widget.section == 'Travel')
+            IconButton(
+              tooltip: 'Table report',
+              icon: const Icon(Icons.table_chart_outlined),
+              onPressed: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => TableReportPage(
+                    title: widget.section,
+                    records: entries.map((entry) => entry.values).toList(),
+                  ),
+                ),
+              ),
+            ),
           ReportShareButton(
             title: widget.section,
             records: entries.map((entry) => entry.values).toList(),
