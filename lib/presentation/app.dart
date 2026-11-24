@@ -1,4 +1,7 @@
+import 'ceo_dashboard.dart';
 import 'reports_dashboard.dart';
+import 'visit_report_form.dart';
+import 'visit_report_details.dart';
 import 'table_report.dart';
 import 'report_share.dart';
 import 'profile.dart';
@@ -9,17 +12,17 @@ import '../domain/reports.dart';
 import 'report_modules.dart';
 import 'package:flutter/material.dart';
 import '../domain/visits.dart';
+import '../core/di/app_dependencies.dart';
+import '../features/auth/domain/usecases/sign_in_user.dart';
+import '../features/reports/domain/usecases/report_use_cases.dart';
+import '../features/visits/domain/usecases/visit_use_cases.dart';
 
 class MedicalApp extends StatefulWidget {
   const MedicalApp({
     super.key,
-    required this.repository,
-    required this.reports,
-    required this.auth,
+    required this.dependencies,
   });
-  final VisitRepository repository;
-  final ReportRepository reports;
-  final AuthRepository auth;
+  final AppDependencies dependencies;
 
   @override
   State<MedicalApp> createState() => _MedicalAppState();
@@ -63,9 +66,9 @@ class _MedicalAppState extends State<MedicalApp> {
     darkTheme: theme(Brightness.dark),
     themeMode: mode,
     home: Workspace(
-      repository: widget.repository,
-      reports: widget.reports,
-      auth: widget.auth,
+      repository: widget.dependencies.visitRepository,
+      reports: widget.dependencies.reportRepository,
+      auth: widget.dependencies.authRepository,
       mode: mode,
       onModeChanged: (value) => setState(() => mode = value),
     ),
@@ -92,12 +95,107 @@ class Workspace extends StatefulWidget {
 }
 
 class _WorkspaceState extends State<Workspace> {
+  late final GetVisits _getVisits;
+  late final AddVisit _addVisit;
+  late final GetReports _getReports;
+  late final AddReport _addReport;
+  late final UpdateReport _updateReport;
+
+  @override
+  void initState() {
+    super.initState();
+    _getVisits = GetVisits(widget.repository);
+    _addVisit = AddVisit(widget.repository);
+    _getReports = GetReports(widget.reports);
+    _addReport = AddReport(widget.reports);
+    _updateReport = UpdateReport(widget.reports);
+  }
+
   Role? role;
   String username = '';
   final profileDetails = <String, (String, String)>{};
   int tab = 0;
   TimeOfDay? started;
   TimeOfDay? ended;
+
+  ReportEntry? get attendance {
+    final today = DateTime.now().toIso8601String().split('T').first;
+    return _getReports('Attendance')
+        .where(
+          (entry) =>
+              entry.values['Employee'] == username &&
+              entry.values['Report date'] == today &&
+              entry.values.containsKey('Check in'),
+        )
+        .firstOrNull;
+  }
+
+  Future<void> recordAttendance() async {
+    final existing = attendance;
+    if (existing?.values.containsKey('Check out') == true) return;
+    var place = '';
+    final form = GlobalKey<FormState>();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text(existing == null ? 'Start of the day' : 'End of the day'),
+        content: Form(
+          key: form,
+          child: TextFormField(
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Place'),
+            onChanged: (value) => place = value.trim(),
+            validator: (value) => value == null || value.trim().isEmpty
+                ? 'Enter your place'
+                : null,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialog),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (form.currentState!.validate()) Navigator.pop(dialog, true);
+            },
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    final now = DateTime.now();
+    final record = ReportEntry({
+      ...?existing?.values,
+      'Employee': username,
+      'Role': role!.label,
+      'Report date':
+          existing?.values['Report date'] ??
+          now.toIso8601String().split('T').first,
+      'Attendance status': 'Present',
+      if (existing == null) ...{
+        'Check in': now.toIso8601String(),
+        'Check-in place': place,
+      } else ...{
+        'Check out': now.toIso8601String(),
+        'Check-out place': place,
+        'Working minutes': now
+            .difference(DateTime.parse(existing.values['Check in']!))
+            .inMinutes
+            .toString(),
+      },
+    });
+    setState(() {
+      if (existing == null) {
+        _addReport('Attendance', record);
+        started = TimeOfDay.fromDateTime(now);
+      } else {
+        _updateReport('Attendance', existing, record);
+        ended = TimeOfDay.fromDateTime(now);
+      }
+    });
+  }
 
   void signOut() => setState(() {
     role = null;
@@ -123,36 +221,52 @@ class _WorkspaceState extends State<Workspace> {
   Future<void> addVisit() async {
     final visit = await Navigator.of(
       context,
-    ).push<Visit>(MaterialPageRoute(builder: (_) => const VisitForm()));
+    ).push<Visit>(MaterialPageRoute(builder: (_) => const VisitReportForm()));
     if (!mounted || visit == null) return;
-    setState(
-      () => widget.repository.add(
+    setState(() {
+      _addVisit(
         Visit(
           visit.doctor,
           visit.clinic,
           visit.time,
           notes: visit.notes,
+          details: visit.details,
           completed: visit.completed,
           escalated: visit.escalated,
           employee: username,
           date: DateTime.now(),
         ),
-      ),
+      );
+      tab = 2;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Visit report saved for ${visit.doctor}.')),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final manager = role == Role.manager;
-    final visits = widget.repository.read();
+    final manager = role?.isManager == true;
+    final visits = _getVisits();
     final reports = visits.where((visit) => visit.completed).toList();
     final theme = Theme.of(context).textTheme;
     if (role == null) {
       return SignIn(
-        auth: widget.auth,
+        signIn: SignInUser(widget.auth),
         onSignedIn: (name, value) => setState(() {
           username = name;
           role = value;
+          final saved = attendance;
+          started = saved == null
+              ? null
+              : TimeOfDay.fromDateTime(
+                  DateTime.parse(saved.values['Check in']!),
+                );
+          ended = saved?.values['Check out'] == null
+              ? null
+              : TimeOfDay.fromDateTime(
+                  DateTime.parse(saved!.values['Check out']!),
+                );
         }),
       );
     }
@@ -198,6 +312,7 @@ class _WorkspaceState extends State<Workspace> {
                     'Time': visit.time,
                     'Status': visit.completed ? 'Completed' : 'Planned',
                     'Summary': visit.notes,
+                    ...visit.details,
                     if (visit.escalated) 'Manager follow-up': 'Required',
                   },
               ],
@@ -243,7 +358,18 @@ class _WorkspaceState extends State<Workspace> {
                 ),
               ],
             ),
-      body: tab == 2
+      body: role == Role.ceo && tab == 0
+          ? CeoDashboard(
+              reports: widget.reports,
+              visits: widget.repository,
+              onAttendance: ended == null ? recordAttendance : null,
+              attendanceLabel: ended != null
+                  ? 'Day ended at '
+                  : started == null
+                  ? 'Start of the day'
+                  : 'End of the day',
+            )
+          : tab == 2
           ? ReportsDashboard(
               repository: widget.reports,
               visits: widget.repository,
@@ -313,20 +439,14 @@ class _WorkspaceState extends State<Workspace> {
                                   : 'Check in to start your day.',
                               style: const TextStyle(color: tealTint),
                             ),
-                            if (!manager && ended == null) ...[
+                            if (ended == null) ...[
                               const SizedBox(height: 12),
                               FilledButton(
                                 style: FilledButton.styleFrom(
                                   backgroundColor: tealTint,
                                   foregroundColor: ink,
                                 ),
-                                onPressed: () => setState(() {
-                                  if (started == null) {
-                                    started = TimeOfDay.now();
-                                  } else {
-                                    ended = TimeOfDay.now();
-                                  }
-                                }),
+                                onPressed: recordAttendance,
                                 child: Text(
                                   started == null ? 'Check in' : 'Check out',
                                 ),
@@ -412,6 +532,26 @@ class _WorkspaceState extends State<Workspace> {
                                 if (visit.escalated) 'Manager follow-up needed',
                               ].join('\n'),
                             ),
+                            trailing: visit.completed
+                                ? const Icon(Icons.chevron_right)
+                                : null,
+                            onTap: visit.completed
+                                ? () => showModalBottomSheet<void>(
+                                    context: context,
+                                    isScrollControlled: true,
+                                    showDragHandle: true,
+                                    builder: (_) => DraggableScrollableSheet(
+                                      expand: false,
+                                      initialChildSize: 0.78,
+                                      maxChildSize: 0.95,
+                                      builder: (context, controller) =>
+                                          VisitReportDetails(
+                                            visit: visit,
+                                            controller: controller,
+                                          ),
+                                    ),
+                                  )
+                                : null,
                           ),
                         ),
                     ],
@@ -430,10 +570,14 @@ class Brand extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
-      CircleAvatar(
-        backgroundColor: ink,
-        foregroundColor: tealTint,
-        child: Icon(Icons.add),
+      const ClipRRect(
+        borderRadius: BorderRadius.all(Radius.circular(10)),
+        child: Image(
+          image: AssetImage('assets/images/ipc_logo.jpeg'),
+          width: 42,
+          height: 42,
+          fit: BoxFit.cover,
+        ),
       ),
       SizedBox(width: 10),
       Text(

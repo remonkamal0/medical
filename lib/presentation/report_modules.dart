@@ -1,10 +1,15 @@
+import 'order_table.dart';
 import 'educational_activity_form.dart';
+import 'office_report_form.dart';
+import 'social_activity_form.dart';
 import 'table_report.dart';
 import 'report_share.dart';
 import 'palette.dart';
 import 'package:flutter/material.dart';
 import '../domain/reports.dart';
 import '../domain/visits.dart';
+import '../features/reports/domain/usecases/report_use_cases.dart';
+import '../features/reports/presentation/controllers/report_controller.dart';
 
 const sections = <String, List<String>>{
   'Attendance': ['Employee', 'Date', 'Attendance status', 'Notes'],
@@ -156,7 +161,7 @@ class ReportModules extends StatelessWidget {
                                     username: username,
                                     repository: repository,
                                     canEdit: item.key == 'Attendance'
-                                        ? role == Role.manager
+                                        ? role.isManager
                                         : role == Role.rep,
                                   ),
                                 ),
@@ -214,32 +219,62 @@ class SectionPage extends StatefulWidget {
 
 class _SectionPageState extends State<SectionPage> {
   String query = '';
+  late final ReportController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = ReportController(
+      getReports: GetReports(widget.repository),
+      addReport: AddReport(widget.repository),
+      updateReport: UpdateReport(widget.repository),
+    )..addListener(_refresh);
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    controller
+      ..removeListener(_refresh)
+      ..dispose();
+    super.dispose();
+  }
 
   Future<void> addEntry() async {
     final entry = await Navigator.push<ReportEntry>(
       context,
       MaterialPageRoute(
-        builder: (_) => widget.section == 'Workshops and seminars'
+        builder: (_) => widget.section == 'Office'
+            ? const OfficeReportForm()
+            : widget.section == 'Social activities'
+            ? const SocialActivityForm()
+            : widget.section == 'Orders'
+            ? OrderForm(
+                lineBuilder: (_) =>
+                    const EntryForm(section: 'Orders', orderLine: true),
+              )
+            : widget.section == 'Workshops and seminars'
             ? const EducationalActivityForm()
             : EntryForm(section: widget.section),
       ),
     );
     if (!mounted || entry == null) return;
-    setState(
-      () => widget.repository.add(
-        widget.section,
-        ReportEntry({
-          ...entry.values,
-          'Employee': widget.username ?? 'Unassigned',
-          'Report date': DateTime.now().toIso8601String().split('T').first,
-        }),
-      ),
+    controller.add(
+      widget.section,
+      ReportEntry({
+        ...entry.values,
+        'Employee': widget.username ?? 'Unassigned',
+        'Report date': DateTime.now().toIso8601String().split('T').first,
+      }),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final entries = widget.repository
+    final entries = controller
         .list(widget.section)
         .where(
           (entry) => entry.values.values.any(
@@ -304,7 +339,12 @@ class _SectionPageState extends State<SectionPage> {
               ),
             ),
           for (final entry in entries)
-            ReportCard(section: widget.section, entry: entry),
+            if (widget.section == 'Orders')
+              OrderTable(record: entry.values)
+            else if (widget.section == 'Workshops and seminars')
+              EducationalActivityCard(entry: entry)
+            else
+              ReportCard(section: widget.section, entry: entry),
         ],
       ),
     );
@@ -365,6 +405,13 @@ class ReportCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  ReportShareButton(
+                    title: '$section - ${values[titleField] ?? 'Report'}',
+                    records: [
+                      {'Report type': section, ...values},
+                    ],
+                    iconColor: Theme.of(context).colorScheme.surfaceContainerLow,
+                  ),
                 ],
               ),
             ),
@@ -403,9 +450,10 @@ class ReportCard extends StatelessWidget {
 }
 
 class EntryForm extends StatefulWidget {
-  const EntryForm({super.key, required this.section});
+  const EntryForm({super.key, required this.section, this.orderLine = false});
 
   final String section;
+  final bool orderLine;
 
   @override
   State<EntryForm> createState() => _EntryFormState();
@@ -413,7 +461,13 @@ class EntryForm extends StatefulWidget {
 
 class _EntryFormState extends State<EntryForm> {
   final form = GlobalKey<FormState>();
-  late final fields = sections[widget.section]!;
+  late final fields = sections[widget.section]!
+      .where(
+        (field) =>
+            !widget.orderLine ||
+            !['Payment method', 'Delivery notes'].contains(field),
+      )
+      .toList();
   late final controllers = {
     for (final field in fields) field: TextEditingController(),
   };

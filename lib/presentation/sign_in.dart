@@ -1,11 +1,10 @@
-import 'palette.dart';
 import 'package:flutter/material.dart';
-import '../domain/auth.dart';
 import '../domain/visits.dart';
+import '../features/auth/domain/usecases/sign_in_user.dart';
 
 class SignIn extends StatefulWidget {
-  const SignIn({super.key, required this.auth, required this.onSignedIn});
-  final AuthRepository auth;
+  const SignIn({super.key, required this.signIn, required this.onSignedIn});
+  final SignInUser signIn;
   final void Function(String, Role) onSignedIn;
 
   @override
@@ -26,12 +25,18 @@ class _SignInState extends State<SignIn> {
   }
 
   void submit() {
-    final role = widget.auth.signIn(username.text, password.text);
+    final role = widget.signIn(username.text, password.text);
     if (role == null) {
       setState(() => error = 'Check your username and password.');
       return;
     }
     widget.onSignedIn(username.text.trim().toLowerCase(), role);
+  }
+
+  void quickSignIn(String name, String passcode) {
+    username.text = name;
+    password.text = passcode;
+    submit();
   }
 
   @override
@@ -48,11 +53,14 @@ class _SignInState extends State<SignIn> {
                 children: [
                   const Align(
                     alignment: Alignment.centerLeft,
-                    child: CircleAvatar(
-                      radius: 25,
-                      backgroundColor: medicalTeal,
-                      foregroundColor: Colors.white,
-                      child: Icon(Icons.medical_services_outlined),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.all(Radius.circular(18)),
+                      child: Image(
+                        image: AssetImage('assets/images/ipc_logo.jpeg'),
+                        width: 78,
+                        height: 78,
+                        fit: BoxFit.cover,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -94,6 +102,43 @@ class _SignInState extends State<SignIn> {
                   ),
                   const SizedBox(height: 22),
                   FilledButton(onPressed: submit, child: const Text('Sign in')),
+                  const SizedBox(height: 26),
+                  Row(
+                    children: [
+                      const Expanded(child: Divider()),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          'Quick demo access',
+                          style: Theme.of(context).textTheme.labelLarge,
+                        ),
+                      ),
+                      const Expanded(child: Divider()),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      ActionChip(
+                        avatar: const Icon(Icons.medical_services_outlined),
+                        label: const Text('Representative'),
+                        onPressed: () => quickSignIn('rep', 'Rep1234'),
+                      ),
+                      ActionChip(
+                        avatar: const Icon(Icons.supervisor_account_outlined),
+                        label: const Text('Manager'),
+                        onPressed: () => quickSignIn('manager', 'Manager1234'),
+                      ),
+                      ActionChip(
+                        avatar: const Icon(Icons.dashboard_outlined),
+                        label: const Text('CEO'),
+                        onPressed: () => quickSignIn('ceo', 'Ceo1234'),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),

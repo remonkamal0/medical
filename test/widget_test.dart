@@ -4,17 +4,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medical/data/demo_visits.dart';
 import 'package:medical/presentation/app.dart';
+import 'package:medical/core/di/app_dependencies.dart';
 
 void main() {
   testWidgets('A recorded visit appears in manager reports', (tester) async {
     await tester.pumpWidget(
       MedicalApp(
-        repository: DemoVisitRepository(),
-        reports: DemoReportRepository(),
-        auth: DemoAuthRepository(),
+        dependencies: AppDependencies(
+          visitRepository: DemoVisitRepository(),
+          reportRepository: DemoReportRepository(),
+          authRepository: DemoAuthRepository(),
+        ),
       ),
     );
     await signIn(tester, 'rep', 'Rep1234');
+    await tester.pumpAndSettle();
+    expect(find.text('Record a visit'), findsNothing);
+    await tester.tap(find.text('Check in'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField), 'Cairo office');
+    await tester.tap(find.text('Confirm'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Record a visit'));
     await tester.pumpAndSettle();
@@ -26,7 +35,9 @@ void main() {
     await tester.pumpAndSettle();
     await signIn(tester, 'manager', 'Manager1234');
     await tester.pumpAndSettle();
-    expect(find.text('Dr. Test'), findsOneWidget);
+    await tester.tap(find.text('Reports').last);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Dr. Test'), findsOneWidget);
   });
 }
 

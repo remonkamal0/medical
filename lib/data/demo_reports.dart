@@ -118,6 +118,14 @@ class DemoReportRepository implements ReportRepository {
   };
 
   @override
+  void replace(String section, ReportEntry previous, ReportEntry next) {
+    final records = _entries[section];
+    final index = records?.indexOf(previous) ?? -1;
+    if (index < 0) throw StateError('Report no longer exists');
+    records![index] = next;
+  }
+
+  @override
   List<ReportEntry> list(String section) =>
       List.unmodifiable(_entries[section] ?? const <ReportEntry>[]);
 
