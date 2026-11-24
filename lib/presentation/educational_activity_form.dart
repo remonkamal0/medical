@@ -521,7 +521,82 @@ class _EducationalActivityFormState extends State<EducationalActivityForm> {
     );
   }
 
-  Widget attendeesTable() => Container(
+  Widget attendeesInput() => LayoutBuilder(
+    builder: (context, constraints) => constraints.maxWidth < 700
+        ? _mobileAttendees()
+        : _desktopAttendeesTable(),
+  );
+
+  Widget _mobileAttendees() {
+    final visibleRows = attendeeCount >= 15 ? 15 : attendeeCount + 1;
+    return Column(
+      children: [
+        for (var index = 0; index < visibleRows; index++)
+          Container(
+            margin: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(radius: 17, child: Text('${index + 1}')),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        (attendees[index]['Doctor name'] ?? '').isEmpty
+                            ? 'Add attendee'
+                            : attendees[index]['Doctor name']!,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                for (final field in attendeeFields) ...[
+                  TextFormField(
+                    initialValue: attendees[index][field],
+                    decoration: InputDecoration(
+                      labelText: field,
+                      prefixIcon: Icon(
+                        switch (field) {
+                          'Doctor name' => Icons.person_outline,
+                          'Mobile' => Icons.phone_outlined,
+                          'Birthday' => Icons.cake_outlined,
+                          'Clinic' => Icons.local_hospital_outlined,
+                          'Email' => Icons.email_outlined,
+                          _ => Icons.medical_information_outlined,
+                        },
+                      ),
+                    ),
+                    keyboardType: field == 'Mobile'
+                        ? TextInputType.phone
+                        : field == 'Email'
+                        ? TextInputType.emailAddress
+                        : TextInputType.text,
+                    onChanged: (value) => setState(
+                      () => attendees[index][field] = value.trim(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _desktopAttendeesTable() => Container(
     decoration: BoxDecoration(
       border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       borderRadius: BorderRadius.circular(18),
@@ -575,7 +650,61 @@ class _EducationalActivityFormState extends State<EducationalActivityForm> {
     ),
   );
 
-  Widget evaluationTable() => Container(
+  Widget evaluationInput() => LayoutBuilder(
+    builder: (context, constraints) => constraints.maxWidth < 700
+        ? _mobileEvaluation()
+        : _desktopEvaluationTable(),
+  );
+
+  Widget _mobileEvaluation() => Column(
+    children: [
+      for (final item in evaluationItems)
+        Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                item,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: ratings[item],
+                decoration: const InputDecoration(
+                  labelText: 'Rating',
+                  prefixIcon: Icon(Icons.star_outline),
+                ),
+                items: [
+                  for (final rating in [
+                    '1 - Poor',
+                    '2 - Fair',
+                    '3 - Good',
+                    '4 - Very good',
+                    '5 - Excellent',
+                    'Not applicable',
+                  ])
+                    DropdownMenuItem(value: rating, child: Text(rating)),
+                ],
+                onChanged: (value) {
+                  if (value != null) ratings[item] = value;
+                },
+              ),
+            ],
+          ),
+        ),
+    ],
+  );
+
+  Widget _desktopEvaluationTable() => Container(
     decoration: BoxDecoration(
       border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       borderRadius: BorderRadius.circular(18),
@@ -712,13 +841,13 @@ class _EducationalActivityFormState extends State<EducationalActivityForm> {
                   'Enter attendee data directly in the table. Empty rows will not be saved.',
                 ),
                 const SizedBox(height: 12),
-                attendeesTable(),
+                attendeesInput(),
                 heading('Evaluation'),
                 const Text(
                   'Rate each item from 1 (Poor) to 5 (Excellent), or choose Not applicable.',
                 ),
                 const SizedBox(height: 12),
-                evaluationTable(),
+                evaluationInput(),
                 const SizedBox(height: 24),
                 FilledButton(onPressed: save, child: const Text('Save report')),
               ],
