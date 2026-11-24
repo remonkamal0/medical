@@ -535,8 +535,8 @@ class _EducationalActivityFormState extends State<EducationalActivityForm> {
         ),
         columnSpacing: 12,
         horizontalMargin: 10,
-        columns: const [
-          DataColumn(label: Text('#')),
+        columns: [
+          const DataColumn(label: Text('#')),
           for (final field in attendeeFields) DataColumn(label: Text(field)),
         ],
         rows: [
